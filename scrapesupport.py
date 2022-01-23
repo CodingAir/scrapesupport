@@ -1,12 +1,12 @@
-from uuid import uuid4
-import logging
 import json
+import logging
+import os
 from pathlib import Path
-import requests
-import yaml
+
 import discord
 import privatebinapi
-import os
+import requests
+import yaml
 
 logging.basicConfig(level=logging.INFO)
 
@@ -23,21 +23,25 @@ cache_folder = source_folder / 'cache'
 
 
 async def save_to_cache(attachment):
-    local_file = cache_folder / (str(uuid4()) + ".txt")
+    i = 0
+    local_file = cache_folder / (str(i) + ".txt")
+    while os.path.exists(local_file):
+        i = i + 1
+        local_file = cache_folder / (str(i) + ".txt")
+
     try:
         await attachment.save(local_file)
-        logging.info('%s was saved!',attachment.filename)
-        local_file_content = ""
+        logging.info('%s was saved!', attachment.filename)
         with open(local_file, 'r') as local_file_stream:
             local_file_content = local_file_stream.read()
         try:
             local_file.unlink()
-        except:
-            logging.error('%s could not be deleted.',attachment.filename)
+        except any:
+            logging.error('%s could not be deleted.', attachment.filename)
         finally:
             return local_file_content
-    except: 
-        logging.error('%s could not be saved.',attachment.filename)
+    except any:
+        logging.error('%s could not be saved.', attachment.filename)
 
     return ""
 
@@ -47,14 +51,15 @@ def upload_to_bin(content):
         response = requests.post(uri + 'documents', data=content)
         response_content = json.loads(response.text)['key']
 
-        logging.info ('api response: %s',str(response.text))
-        if len(response_content)<=10:
-            return (uri+response_content),True
-    if platform=='privatebin':
+        logging.info('api response: %s', str(response.text))
+        if len(response_content) <= 10:
+            return (uri + response_content), True
+    if platform == 'privatebin':
         response = privatebinapi.send(uri, text=content)
-        if response['status']==0:
-            return response['full_url'],True
-    return "Wrong configuration or return value",False
+        if response['status'] == 0:
+            return response['full_url'], True
+    return "Wrong configuration or return value", False
+
 
 def clear_cache():
     if os.path.exists(cache_folder):
@@ -65,7 +70,7 @@ def clear_cache():
 
 @client.event
 async def on_ready():
-    logging.info('We have logged in as %s',client.user)
+    logging.info('We have logged in as %s', client.user)
 
 
 @client.event
@@ -77,9 +82,9 @@ async def on_message(message):
         for attachment in message.attachments:
             if attachment.content_type.startswith('text'):
                 attachment_content = await save_to_cache(attachment)
-                if attachment_content!="":
-                    link,success = upload_to_bin(attachment_content)
-                    if (success):
+                if attachment_content != "":
+                    link, success = upload_to_bin(attachment_content)
+                    if success:
                         await message.channel.send(bot_message.format(link=link),
                                                    reference=message,
                                                    mention_author=False)
