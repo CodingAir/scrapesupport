@@ -1,10 +1,10 @@
 from uuid import uuid4
-import discord
-import yaml
 import logging
 import json
-import requests
 from pathlib import Path
+import requests
+import yaml
+import discord
 import privatebinapi
 import os
 
@@ -26,17 +26,18 @@ async def save_to_cache(attachment):
     local_file = cache_folder / (str(uuid4()) + ".txt")
     try:
         await attachment.save(local_file)
-        logging.info(attachment.filename + ' was saved!')
+        logging.info('%s was saved!',attachment.filename)
+        local_file_content = ""
         with open(local_file, 'r') as local_file_stream:
             local_file_content = local_file_stream.read()
         try:
             local_file.unlink()
-        except any:
-            logging.error(attachment.filename + ' could not be deleted.')
+        except:
+            logging.error('%s could not be deleted.',attachment.filename)
         finally:
             return local_file_content
-    except any:
-        logging.error(attachment.filename + ' could not be saved.')
+    except: 
+        logging.error('%s could not be saved.',attachment.filename)
 
     return ""
 
@@ -46,19 +47,14 @@ def upload_to_bin(content):
         response = requests.post(uri + 'documents', data=content)
         response_content = json.loads(response.text)['key']
 
-        logging.info('api response: ' + str(response.text))
-        if len(response_content) <= 10:
-            return (uri + response_content), True
-        else:
-            return "", False
-    if platform == 'privatebin':
+        logging.info ('api response: %s',str(response.text))
+        if len(response_content)<=10:
+            return (uri+response_content),True
+    if platform=='privatebin':
         response = privatebinapi.send(uri, text=content)
-        if response['status'] == 0:
-            return response['full_url'], True
-        else:
-            return "", False
-    return "Wrong configuration!", False
-
+        if response['status']==0:
+            return response['full_url'],True
+    return "Wrong configuration or return value",False
 
 def clear_cache():
     if os.path.exists(cache_folder):
@@ -69,7 +65,7 @@ def clear_cache():
 
 @client.event
 async def on_ready():
-    print('We have logged in as {0.user}'.format(client))
+    logging.info('We have logged in as %s',client.user)
 
 
 @client.event
@@ -81,10 +77,12 @@ async def on_message(message):
         for attachment in message.attachments:
             if attachment.content_type.startswith('text'):
                 attachment_content = await save_to_cache(attachment)
-                if attachment_content != "":
-                    link, success = upload_to_bin(attachment_content)
-                    if success:
-                        await message.channel.send(bot_message.format(link=link), reference=message, mention_author=False)
+                if attachment_content!="":
+                    link,success = upload_to_bin(attachment_content)
+                    if (success):
+                        await message.channel.send(bot_message.format(link=link),
+                                                   reference=message,
+                                                   mention_author=False)
         return
 
 
