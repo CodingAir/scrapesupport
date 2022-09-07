@@ -3,15 +3,19 @@ import logging
 import os
 from pathlib import Path
 
-import discord
+import nextcord
 import privatebinapi
 import requests
 import yaml
 
 logging.basicConfig(level=logging.INFO)
 
+intents = nextcord.Intents.default()
+intents.message_content = True
+
 # read the config
-client = discord.Client()
+client = nextcord.Client(intents=intents)
+
 source_folder = Path(__file__).parent
 with open(source_folder / "config.yml", 'rb') as configstream:
     config = yaml.safe_load(configstream)
@@ -48,6 +52,7 @@ async def save_to_cache(attachment):
 
 def upload_to_bin(content):
     if platform == 'hastebin':
+        logging.info("Uploading to hastebin...")
         response = requests.post(uri + 'documents', data=content)
         response_content = json.loads(response.text)['key']
 
@@ -55,7 +60,9 @@ def upload_to_bin(content):
         if len(response_content) <= 10:
             return (uri + response_content), True
     if platform == 'privatebin':
-        response = privatebinapi.send(uri, text=content)
+        logging.info("Uploading to privatebin...")
+        response = privatebinapi.send(uri, text=content, formatting='syntaxhighlighting')
+        logging.info('api response: %s', str(response['status']))
         if response['status'] == 0:
             return response['full_url'], True
     return "Wrong configuration or return value", False
@@ -78,6 +85,7 @@ async def on_message(message):
     if message.author.bot:
         return
 
+    print(len(message.attachments))
     if len(message.attachments) > 0:
         for attachment in message.attachments:
             if attachment.content_type.startswith('text'):
