@@ -1,83 +1,82 @@
 import json
-import logging
 import os
-from pathlib import Path
+from typing import Optional
 
 import nextcord
 import privatebinapi
 import requests
 import yaml
-
-logging.basicConfig(level=logging.INFO)
+import log
 
 intents = nextcord.Intents.default()
 intents.message_content = True
-
-# read the config
 client = nextcord.Client(intents=intents)
 
-source_folder = Path(__file__).parent
-with open(source_folder / "config.yml", 'rb') as configstream:
-    config = yaml.safe_load(configstream)
+with open("config.yml", 'r') as f:
+    config = yaml.safe_load(f)
     token = config.get('token')
     uri = config.get('uri')
     platform = config.get('platform')
     bot_message: str = config.get('bot_message')
-cache_folder = source_folder / 'cache'
+cache_folder = 'cache'
+working_dir = os.getcwd()
 
 
-async def save_to_cache(attachment):
+async def save_to_cache(attachment: nextcord.Attachment) -> Optional[str]:
     i = 0
-    local_file = cache_folder / (str(i) + ".txt")
+    local_file = os.path.join(working_dir, cache_folder, str(i) + ".txt")
     while os.path.exists(local_file):
         i = i + 1
-        local_file = cache_folder / (str(i) + ".txt")
+        local_file = os.path.join(working_dir, cache_folder, str(i) + ".txt")
 
     try:
         await attachment.save(local_file)
-        logging.info('%s was saved!', attachment.filename)
+        log.info(attachment.filename, 'was saved!')
         with open(local_file, 'r') as local_file_stream:
             local_file_content = local_file_stream.read()
-        try:
-            local_file.unlink()
-        except any:
-            logging.error('%s could not be deleted.', attachment.filename)
-        finally:
-            return local_file_content
+
+        os.remove(local_file)
+        return local_file_content
     except any:
-        logging.error('%s could not be saved.', attachment.filename)
+        log.error(attachment.filename, 'could not be saved.')
 
-    return ""
+    return None
 
 
-def upload_to_bin(content):
+def upload_to_bin(content: str) -> (str, bool):
     if platform == 'hastebin':
-        logging.info("Uploading to hastebin...")
+        log.info(f"Uploading to {platform}...")
+
         response = requests.post(uri + 'documents', data=content)
         response_content = json.loads(response.text)['key']
 
-        logging.info('api response: %s', str(response.text))
-        if len(response_content) <= 10:
+        success = len(response_content) <= 10
+
+        log.info('Api response:', str(response.text), success)
+        if success:
             return (uri + response_content), True
     if platform == 'privatebin':
-        logging.info("Uploading to privatebin...")
+        log.info(f"Uploading to {platform}...")
+
         response = privatebinapi.send(uri, text=content, formatting='syntaxhighlighting')
-        logging.info('api response: %s', str(response['status']))
-        if response['status'] == 0:
+        success = response['status'] == 0
+
+        log.info('Api response:', str(response['status']), success)
+        if success:
             return response['full_url'], True
     return "Wrong configuration or return value", False
 
 
-def clear_cache():
-    if os.path.exists(cache_folder):
-        cache_folder.rmdir()
-    cache_folder.mkdir(parents=True, exist_ok=True)
-    return True
+def clear_cache() -> None:
+    path = os.path.join(working_dir, cache_folder)
+    if os.path.exists(path):
+        os.removedirs(path)
+    os.mkdir(path)
 
 
 @client.event
 async def on_ready():
-    logging.info('We have logged in as %s', client.user)
+    log.info('We have logged in as', client.user)
 
 
 @client.event
@@ -85,12 +84,11 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    print(len(message.attachments))
     if len(message.attachments) > 0:
         for attachment in message.attachments:
             if attachment.content_type.startswith('text'):
                 attachment_content = await save_to_cache(attachment)
-                if attachment_content != "":
+                if attachment_content:
                     link, success = upload_to_bin(attachment_content)
                     if success:
                         await message.channel.send(bot_message.format(link=link),
@@ -100,4 +98,5 @@ async def on_message(message):
 
 
 clear_cache()
+log.load_logging_handlers()
 client.run(token)
